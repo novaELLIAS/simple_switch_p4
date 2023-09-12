@@ -50,6 +50,17 @@
       "action_params": {
         "port": 2
       }
+    },
+    {
+      "table": "MyIngress.arp_proxy_match",
+      "match": {
+        "hdr.arp.targetIP": "10.0.1.1",
+        "hdr.arp.op":       1
+      },
+      "action_name": "MyIngress.arp_proxy_flexback",
+      "action_params": {
+        "resMacAddr": "08:00:00:00:01:01"
+      }
     }
   ]
 }

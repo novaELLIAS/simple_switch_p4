@@ -121,6 +121,19 @@ control MyIngress(inout headers hdr,
         standard_metadata.egress_spec = port;
     }
 
+    action arp_proxy_flexback(macAddr_t resMacAddr) {
+        macAddr_t senderMAC = hdr.arp.senderMAC;
+        ip4Addr_t senderIP  = hdr.arp.senderIP;
+        hdr.arp.senderIP  = hdr.arp.targetIP;
+        hdr.arp.senderMAC = resMacAddr;
+        hdr.arp.targetIP  = senderIP;
+        hdr.arp.targetMAC = senderMAC;
+        hdr.arp.op = 2;
+        standard_metadata.egress_spec = standard_metadata.ingress_port;
+        hdr.ethernet.srcAddr = resMacAddr;
+        hdr.ethernet.dstAddr = senderMAC;
+    }
+
     table ipv4_lpm {
         key = {
             hdr.ipv4.dstAddr: lpm;
@@ -141,7 +154,19 @@ control MyIngress(inout headers hdr,
         actions = {
             port_foward;
             drop;
-            NoAction;
+        }
+        size = 1024;
+        default_action = drop();
+    }
+
+    table arp_proxy_match {
+        key = {
+            hdr.arp.targetIP: exact;
+            hdr.arp.op:       exact;
+        }
+        actions = {
+            arp_proxy_flexback;
+            drop;
         }
         size = 1024;
         default_action = drop();
@@ -149,7 +174,11 @@ control MyIngress(inout headers hdr,
 
     apply {
         if (hdr.arp.isValid()) {
-            arp_foward_match.apply();
+            if (arp_proxy_match.apply().hit) {
+                NoAction();
+            } else {
+                arp_foward_match.apply();
+            }
         }
         if (hdr.ipv4.isValid()) {
             ipv4_lpm.apply();
