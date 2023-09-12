@@ -3,6 +3,7 @@
 #include <v1model.p4>
 
 const bit<16> TYPE_IPV4 = 0x800;
+const bit<16> TYPE_ARP4 = 0x806;
 
 /*************************************************************************
 *********************** H E A D E R S  ***********************************
@@ -33,12 +34,25 @@ header ipv4_t {
     ip4Addr_t dstAddr;
 }
 
+header arpv4_t {
+    bit<16> hardwareType;
+    bit<16> protocol;
+    bit<8>  haddrLen;
+    bit<8>  protoLen;
+    bit<16> op;
+    macAddr_t senderMAC;
+    ip4Addr_t senderIP;
+    macAddr_t targetMAC;
+    ip4Addr_t targetIP;
+}
+
 struct metadata {
     /* empty */
 }
 
 struct headers {
     ethernet_t   ethernet;
+    arpv4_t      arp;
     ipv4_t       ipv4;
 }
 
@@ -59,12 +73,18 @@ parser MyParser(packet_in packet,
         packet.extract(hdr.ethernet);
         transition select(hdr.ethernet.etherType) {
             TYPE_IPV4: parse_ipv4;
-            default: accept;
+            TYPE_ARP4: parse_arp;
+            default:   accept;
         }
     }
 
     state parse_ipv4 {
         packet.extract(hdr.ipv4);
+        transition accept;
+    }
+
+    state parse_arp {
+        packet.extract(hdr.arp);
         transition accept;
     }
 
@@ -97,6 +117,10 @@ control MyIngress(inout headers hdr,
         hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
     }
 
+    action port_foward(egressSpec_t port) {
+        standard_metadata.egress_spec = port;
+    }
+
     table ipv4_lpm {
         key = {
             hdr.ipv4.dstAddr: lpm;
@@ -110,7 +134,23 @@ control MyIngress(inout headers hdr,
         default_action = drop();
     }
 
+    table arp_foward_match {
+        key = {
+            hdr.arp.targetIP: exact;
+        }
+        actions = {
+            port_foward;
+            drop;
+            NoAction;
+        }
+        size = 1024;
+        default_action = drop();
+    }
+
     apply {
+        if (hdr.arp.isValid()) {
+            arp_foward_match.apply();
+        }
         if (hdr.ipv4.isValid()) {
             ipv4_lpm.apply();
         }
@@ -159,6 +199,7 @@ control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
         packet.emit(hdr.ipv4);
+        packet.emit(hdr.arp);
     }
 }
 

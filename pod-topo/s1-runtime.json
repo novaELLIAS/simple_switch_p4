@@ -30,6 +30,26 @@
         "dstAddr": "08:00:00:00:01:02",
         "port": 2
       }
+    },
+    {
+      "table": "MyIngress.arp_foward_match",
+      "match": {
+        "hdr.arp.targetIP": "10.0.1.1"
+      },
+      "action_name": "MyIngress.port_foward",
+      "action_params": {
+        "port": 1
+      }
+    },
+    {
+      "table": "MyIngress.arp_foward_match",
+      "match": {
+        "hdr.arp.targetIP": "10.0.1.2"
+      },
+      "action_name": "MyIngress.port_foward",
+      "action_params": {
+        "port": 2
+      }
     }
   ]
 }
