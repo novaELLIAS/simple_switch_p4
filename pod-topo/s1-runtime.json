@@ -61,6 +61,27 @@
       "action_params": {
         "resMacAddr": "08:00:00:00:01:01"
       }
+    },
+
+    {
+      "table": "MyIngress.ndp_foward_match",
+      "match": {
+        "hdr.icmpv6.targetIP": "2001:1::1/64"
+      },
+      "action_name": "MyIngress.port_foward",
+      "action_params": {
+        "port": 1
+      }
+    },
+    {
+      "table": "MyIngress.ndp_foward_match",
+      "match": {
+        "hdr.icmpv6.targetIP": "2001:1::2/64"
+      },
+      "action_name": "MyIngress.port_foward",
+      "action_params": {
+        "port": 2
+      }
     }
   ]
 }
