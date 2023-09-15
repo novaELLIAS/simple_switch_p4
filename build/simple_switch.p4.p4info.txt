@@ -1,0 +1,190 @@
+pkg_info {
+  arch: "v1model"
+}
+tables {
+  preamble {
+    id: 37375156
+    name: "MyIngress.ipv4_lpm"
+    alias: "ipv4_lpm"
+  }
+  match_fields {
+    id: 1
+    name: "hdr.ipv4.dstAddr"
+    bitwidth: 32
+    match_type: LPM
+  }
+  action_refs {
+    id: 28792405
+  }
+  action_refs {
+    id: 25652968
+  }
+  action_refs {
+    id: 21257015
+  }
+  size: 1024
+}
+tables {
+  preamble {
+    id: 47351917
+    name: "MyIngress.ipv6_lpm"
+    alias: "ipv6_lpm"
+  }
+  match_fields {
+    id: 1
+    name: "hdr.ipv6.dstAddr"
+    bitwidth: 128
+    match_type: LPM
+  }
+  action_refs {
+    id: 24925451
+  }
+  action_refs {
+    id: 17002835
+  }
+  action_refs {
+    id: 21257015
+  }
+  size: 1024
+}
+tables {
+  preamble {
+    id: 46233777
+    name: "MyIngress.arp_forward_match"
+    alias: "arp_forward_match"
+  }
+  match_fields {
+    id: 1
+    name: "hdr.arp.targetIP"
+    bitwidth: 32
+    match_type: EXACT
+  }
+  action_refs {
+    id: 17002835
+  }
+  action_refs {
+    id: 25652968
+  }
+  size: 1024
+}
+tables {
+  preamble {
+    id: 45622734
+    name: "MyIngress.arp_proxy_match"
+    alias: "arp_proxy_match"
+  }
+  match_fields {
+    id: 1
+    name: "hdr.arp.targetIP"
+    bitwidth: 32
+    match_type: EXACT
+  }
+  match_fields {
+    id: 2
+    name: "hdr.arp.op"
+    bitwidth: 16
+    match_type: EXACT
+  }
+  action_refs {
+    id: 20793162
+  }
+  action_refs {
+    id: 25652968
+  }
+  size: 1024
+}
+tables {
+  preamble {
+    id: 34976035
+    name: "MyIngress.ndp_forward_match"
+    alias: "ndp_forward_match"
+  }
+  match_fields {
+    id: 1
+    name: "hdr.icmpv6.targetAddr"
+    bitwidth: 128
+    match_type: EXACT
+  }
+  action_refs {
+    id: 17002835
+  }
+  action_refs {
+    id: 25652968
+  }
+  size: 1024
+}
+actions {
+  preamble {
+    id: 21257015
+    name: "NoAction"
+    alias: "NoAction"
+    annotations: "@noWarn(\"unused\")"
+  }
+}
+actions {
+  preamble {
+    id: 25652968
+    name: "MyIngress.drop"
+    alias: "drop"
+  }
+}
+actions {
+  preamble {
+    id: 28792405
+    name: "MyIngress.ipv4_forward"
+    alias: "ipv4_forward"
+  }
+  params {
+    id: 1
+    name: "dstAddr"
+    bitwidth: 48
+  }
+  params {
+    id: 2
+    name: "port"
+    bitwidth: 9
+  }
+}
+actions {
+  preamble {
+    id: 24925451
+    name: "MyIngress.ipv6_forward"
+    alias: "ipv6_forward"
+  }
+  params {
+    id: 1
+    name: "dstAddr"
+    bitwidth: 48
+  }
+  params {
+    id: 2
+    name: "port"
+    bitwidth: 9
+  }
+}
+actions {
+  preamble {
+    id: 17002835
+    name: "MyIngress.port_forward"
+    alias: "port_forward"
+  }
+  params {
+    id: 1
+    name: "port"
+    bitwidth: 9
+  }
+}
+actions {
+  preamble {
+    id: 20793162
+    name: "MyIngress.arp_proxy_flexback"
+    alias: "arp_proxy_flexback"
+  }
+  params {
+    id: 1
+    name: "resMacAddr"
+    bitwidth: 48
+  }
+}
+type_info {
+}

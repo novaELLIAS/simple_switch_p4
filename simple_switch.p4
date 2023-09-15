@@ -4,14 +4,16 @@
 
 const bit<16> TYPE_IPV4 = 0x800;
 const bit<16> TYPE_ARP4 = 0x806;
+const bit<8>  TYPE_IPV6EXT_ICMP = 58;
 
 /*************************************************************************
 *********************** H E A D E R S  ***********************************
 *************************************************************************/
 
-typedef bit<9>  egressSpec_t;
-typedef bit<48> macAddr_t;
-typedef bit<32> ip4Addr_t;
+typedef bit<9>   egressSpec_t;
+typedef bit<48>  macAddr_t;
+typedef bit<32>  ip4Addr_t;
+typedef bit<128> ip6Addr_t;
 
 header ethernet_t {
     macAddr_t dstAddr;
@@ -34,6 +36,25 @@ header ipv4_t {
     ip4Addr_t dstAddr;
 }
 
+header ipv6_t {
+    bit<4>    version;
+    bit<8>    trafficClass;
+    bit<20>   flowTable;
+    bit<16>   payloadLength;
+    bit<8>    nextHeader;
+    bit<8>    hopLimit;
+    ip6Addr_t srcAddr;
+    ip6Addr_t dstAddr;
+}
+
+header icmpv6_t {
+    bit<8>    type;
+    bit<8>    code;
+    bit<16>   checksum;
+    bit<32>   reserved;
+    ip6Addr_t targetAddr;
+}
+
 header arpv4_t {
     bit<16> hardwareType;
     bit<16> protocol;
@@ -54,6 +75,8 @@ struct headers {
     ethernet_t   ethernet;
     arpv4_t      arp;
     ipv4_t       ipv4;
+    ipv6_t       ipv6;
+    icmpv6_t     icmpv6;
 }
 
 /*************************************************************************
@@ -80,6 +103,19 @@ parser MyParser(packet_in packet,
 
     state parse_ipv4 {
         packet.extract(hdr.ipv4);
+        transition accept;
+    }
+
+    state parse_ipv6 {
+        packet.extract(hdr.ipv6);
+        transition select(hdr.ipv6.nextHeader) {
+            TYPE_IPV6EXT_ICMP: parse_icmpv6;
+            default: accept;
+        }
+    }
+    
+    state parse_icmpv6 {
+        packet.extract(hdr.icmpv6);
         transition accept;
     }
 
@@ -117,7 +153,14 @@ control MyIngress(inout headers hdr,
         hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
     }
 
-    action port_foward(egressSpec_t port) {
+    action ipv6_forward(macAddr_t dstAddr, egressSpec_t port) {
+        standard_metadata.egress_spec = port;
+        hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
+        hdr.ethernet.dstAddr = dstAddr;
+        hdr.ipv6.hopLimit = hdr.ipv6.hopLimit - 1;
+    }
+
+    action port_forward(egressSpec_t port) {
         standard_metadata.egress_spec = port;
     }
 
@@ -147,12 +190,25 @@ control MyIngress(inout headers hdr,
         default_action = drop();
     }
 
-    table arp_foward_match {
+    table ipv6_lpm {
+        key = {
+            hdr.ipv6.dstAddr: lpm;
+        }
+        actions = {
+            ipv6_forward;
+            port_forward;
+            NoAction;
+        }
+        size = 1024;
+        default_action = NoAction();
+    }
+
+    table arp_forward_match {
         key = {
             hdr.arp.targetIP: exact;
         }
         actions = {
-            port_foward;
+            port_forward;
             drop;
         }
         size = 1024;
@@ -172,13 +228,31 @@ control MyIngress(inout headers hdr,
         default_action = drop();
     }
 
+    table ndp_forward_match {
+        key = {
+            hdr.icmpv6.targetAddr: exact;
+        }
+        actions = {
+            port_forward;
+            drop;
+        }
+        size = 1024;
+        default_action = drop();
+    }
+
     apply {
         if (hdr.arp.isValid()) {
             if (arp_proxy_match.apply().hit) {
                 NoAction();
             } else {
-                arp_foward_match.apply();
+                arp_forward_match.apply();
             }
+        }
+        if (hdr.ipv6.isValid()) {
+            ipv6_lpm.apply();
+        }
+        if (hdr.icmpv6.isValid() && hdr.icmpv6.type==136) {
+            ndp_forward_match.apply();
         }
         if (hdr.ipv4.isValid()) {
             ipv4_lpm.apply();
@@ -226,9 +300,7 @@ control MyComputeChecksum(inout headers  hdr, inout metadata meta) {
 
 control MyDeparser(packet_out packet, in headers hdr) {
     apply {
-        packet.emit(hdr.ethernet);
-        packet.emit(hdr.ipv4);
-        packet.emit(hdr.arp);
+        packet.emit(hdr);
     }
 }
 
