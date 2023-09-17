@@ -3,8 +3,11 @@
 #include <v1model.p4>
 
 const bit<16> TYPE_IPV4 = 0x800;
+const bit<16> TYPE_IPV6 = 0x86dd;
 const bit<16> TYPE_ARP4 = 0x806;
 const bit<8>  TYPE_IPV6EXT_ICMP = 58;
+const bit<8>  TYPE_ICMP_NDP_NS = 135;
+const bit<8>  TYPE_ICMP_NDP_NA = 136;
 
 /*************************************************************************
 *********************** H E A D E R S  ***********************************
@@ -51,8 +54,17 @@ header icmpv6_t {
     bit<8>    type;
     bit<8>    code;
     bit<16>   checksum;
-    bit<32>   reserved;
-    ip6Addr_t targetAddr;
+}
+
+header ndp_t {
+    bit<1>    router;
+    bit<1>    solicited;
+    bit<1>    overrid;
+    bit<29>   save;
+    ip6Addr_t targetIP;
+    bit<8>    type;
+    bit<8>    len;
+    macAddr_t srcAddr;
 }
 
 header arpv4_t {
@@ -77,6 +89,7 @@ struct headers {
     ipv4_t       ipv4;
     ipv6_t       ipv6;
     icmpv6_t     icmpv6;
+    ndp_t        ndp;
 }
 
 /*************************************************************************
@@ -97,6 +110,7 @@ parser MyParser(packet_in packet,
         transition select(hdr.ethernet.etherType) {
             TYPE_IPV4: parse_ipv4;
             TYPE_ARP4: parse_arp;
+            TYPE_IPV6: parse_ipv6;
             default:   accept;
         }
     }
@@ -116,6 +130,15 @@ parser MyParser(packet_in packet,
     
     state parse_icmpv6 {
         packet.extract(hdr.icmpv6);
+        transition select(hdr.icmpv6.type) {
+            TYPE_ICMP_NDP_NS: parse_ndp;
+            TYPE_ICMP_NDP_NA: parse_ndp;
+            default:          accept;
+        }
+    }
+
+    state parse_ndp {
+        packet.extract(hdr.ndp);
         transition accept;
     }
 
@@ -177,6 +200,21 @@ control MyIngress(inout headers hdr,
         hdr.ethernet.dstAddr = senderMAC;
     }
 
+    action _NoAction() {
+
+    }
+    
+    table mac_match_exact {
+    	key = {
+    	    hdr.ethernet.dstAddr: exact;
+    	}
+    	actions = {
+    	    port_forward;
+    	    drop;
+    	}
+    	default_action = drop();
+    }
+
     table ipv4_lpm {
         key = {
             hdr.ipv4.dstAddr: lpm;
@@ -197,10 +235,9 @@ control MyIngress(inout headers hdr,
         actions = {
             ipv6_forward;
             port_forward;
-            NoAction;
+            _NoAction;
         }
-        size = 1024;
-        default_action = NoAction();
+        default_action = _NoAction();
     }
 
     table arp_forward_match {
@@ -211,7 +248,6 @@ control MyIngress(inout headers hdr,
             port_forward;
             drop;
         }
-        size = 1024;
         default_action = drop();
     }
 
@@ -230,13 +266,12 @@ control MyIngress(inout headers hdr,
 
     table ndp_forward_match {
         key = {
-            hdr.icmpv6.targetAddr: exact;
+            hdr.ndp.targetIP: exact;
         }
         actions = {
             port_forward;
             drop;
         }
-        size = 1024;
         default_action = drop();
     }
 
@@ -248,12 +283,19 @@ control MyIngress(inout headers hdr,
                 arp_forward_match.apply();
             }
         }
-        if (hdr.ipv6.isValid()) {
+        if (hdr.ndp.isValid()) {
+            if (hdr.icmpv6.type == TYPE_ICMP_NDP_NS) {
+            	ndp_forward_match.apply();
+            }
+            if (hdr.icmpv6.type == TYPE_ICMP_NDP_NA) {
+            	mac_match_exact.apply();
+            }
+        } else if (hdr.ipv6.isValid()) {
             ipv6_lpm.apply();
         }
-        if (hdr.icmpv6.isValid() && hdr.icmpv6.type==136) {
-            ndp_forward_match.apply();
-        }
+        // if (hdr.ndp.isValid() && hdr.icmpv6.type==135) {
+        //     ndp_forward_match.apply();
+        // }
         if (hdr.ipv4.isValid()) {
             ipv4_lpm.apply();
         }

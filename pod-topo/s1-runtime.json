@@ -32,9 +32,35 @@
       }
     },
     {
+      "table": "MyIngress.mac_match_exact",
+      "match": {
+      	"hdr.ethernet.dstAddr": "08:00:00:00:01:01"
+      },
+      "action_name": "MyIngress.port_forward",
+      "action_params": {
+        "port": 1
+      }
+    },
+        {
+      "table": "MyIngress.mac_match_exact",
+      "match": {
+      	"hdr.ethernet.dstAddr": "08:00:00:00:01:02"
+      },
+      "action_name": "MyIngress.port_forward",
+      "action_params": {
+        "port": 2
+      }
+    },
+    {
+      "table": "MyIngress.ipv6_lpm",
+      "default_action": true,
+      "action_name": "MyIngress._NoAction",
+      "action_params": { }
+    },
+    {
       "table": "MyIngress.ipv6_lpm",
       "match": {
-        "hdr.ipv6.dstAddr": ["2001:1::1", 128]
+        "hdr.ipv6.dstAddr": ["2001::1", 128]
       },
       "action_name": "MyIngress.ipv6_forward",
       "action_params": {
@@ -45,7 +71,7 @@
     {
       "table": "MyIngress.ipv6_lpm",
       "match": {
-        "hdr.ipv6.dstAddr": ["2001:1::2", 128]
+        "hdr.ipv6.dstAddr": ["2001::2", 128]
       },
       "action_name": "MyIngress.ipv6_forward",
       "action_params": {
@@ -88,7 +114,7 @@
     {
       "table": "MyIngress.ndp_forward_match",
       "match": {
-        "hdr.icmpv6.targetIP": "2001:1::1/64"
+        "hdr.ndp.targetIP": "2001::1"
       },
       "action_name": "MyIngress.port_forward",
       "action_params": {
@@ -98,7 +124,7 @@
     {
       "table": "MyIngress.ndp_forward_match",
       "match": {
-        "hdr.icmpv6.targetIP": "2001:1::2/64"
+        "hdr.ndp.targetIP": "2001::2"
       },
       "action_name": "MyIngress.port_forward",
       "action_params": {
