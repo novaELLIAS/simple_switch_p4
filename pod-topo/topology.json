@@ -6,7 +6,8 @@
                 "commands": ["ip addr add 2001::2/64 dev eth0"]}
     },
     "switches": {
-        "s1": { "runtime_json" : "pod-topo/s1-runtime.json" }
+        "s1": { "runtime_json" : "pod-topo/s1-runtime.json",
+                "commands": ["mirroring_add 1919 2"] }
     },
     "links": [
         ["h1", "s1-p1"], ["h2", "s1-p2"]

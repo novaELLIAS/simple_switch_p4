@@ -9,6 +9,8 @@ const bit<8>  TYPE_IPV6EXT_ICMP = 58;
 const bit<8>  TYPE_ICMP_NDP_NS = 135;
 const bit<8>  TYPE_ICMP_NDP_NA = 136;
 
+const bit<1> TEST_CLONE = 1;
+
 /*************************************************************************
 *********************** H E A D E R S  ***********************************
 *************************************************************************/
@@ -79,8 +81,16 @@ header arpv4_t {
     ip4Addr_t targetIP;
 }
 
+struct postcard_t {
+    @field_list(1)
+    ip4Addr_t dstIP;
+}
+
 struct metadata {
-    /* empty */
+    @field_list(1)
+    postcard_t postcard;
+    @field_list(1)
+    ip4Addr_t dstIP;
 }
 
 struct headers {
@@ -200,6 +210,12 @@ control MyIngress(inout headers hdr,
         hdr.ethernet.dstAddr = senderMAC;
     }
 
+    action clone_cpu() {
+        meta.postcard.dstIP = 0x0b04050e;
+        meta.dstIP = 0x0b04050e;
+        clone_preserving_field_list(CloneType.I2E, 1919, 1);
+    }
+
     action _NoAction() {
 
     }
@@ -275,6 +291,11 @@ control MyIngress(inout headers hdr,
         default_action = drop();
     }
 
+    table postcard {
+        actions = {clone_cpu;}
+        default_action = clone_cpu();
+    }
+
     apply {
         if (hdr.arp.isValid()) {
             if (arp_proxy_match.apply().hit) {
@@ -299,6 +320,11 @@ control MyIngress(inout headers hdr,
         if (hdr.ipv4.isValid()) {
             ipv4_lpm.apply();
         }
+        if (TEST_CLONE == 1 && hdr.ipv4.isValid()) {
+            if (standard_metadata.egress_spec == 2) {
+                postcard.apply();
+            }
+        }
     }
 }
 
@@ -309,7 +335,11 @@ control MyIngress(inout headers hdr,
 control MyEgress(inout headers hdr,
                  inout metadata meta,
                  inout standard_metadata_t standard_metadata) {
-    apply {  }
+    apply {
+        if (standard_metadata.instance_type == 1) {
+            hdr.ipv4.dstAddr = meta.dstIP;
+        }
+    }
 }
 
 /*************************************************************************
