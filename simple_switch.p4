@@ -6,6 +6,7 @@ const bit<16> TYPE_IPV4 = 0x800;
 const bit<16> TYPE_IPV6 = 0x86dd;
 const bit<16> TYPE_ARP4 = 0x806;
 const bit<8>  TYPE_IPV6EXT_ICMP = 58;
+const bit<8>  TYPE_IPV6EXT_SRV6 = 43;
 const bit<8>  TYPE_ICMP_NDP_NS = 135;
 const bit<8>  TYPE_ICMP_NDP_NA = 136;
 
@@ -50,6 +51,20 @@ header ipv6_t {
     bit<8>    hopLimit;
     ip6Addr_t srcAddr;
     ip6Addr_t dstAddr;
+}
+
+header srv6_t {
+    bit<8>  nextHeader;
+    bit<8>  hdrExtLen;
+    bit<8>  rtType;
+    bit<8>  segLeft;
+    bit<8>  lastEntry;
+    bit<8>  flag;
+    bit<16> tag;
+}
+
+header sid_t {
+    bit<128> sid;
 }
 
 header icmpv6_t {
@@ -98,6 +113,9 @@ struct headers {
     arpv4_t      arp;
     ipv4_t       ipv4;
     ipv6_t       ipv6;
+    srv6_t       srv6;
+    sid_t[5]     sidList;
+    sid_t        sidLast;
     icmpv6_t     icmpv6;
     ndp_t        ndp;
 }
@@ -134,10 +152,48 @@ parser MyParser(packet_in packet,
         packet.extract(hdr.ipv6);
         transition select(hdr.ipv6.nextHeader) {
             TYPE_IPV6EXT_ICMP: parse_icmpv6;
+            TYPE_IPV6EXT_SRV6: parse_srv6;
             default: accept;
         }
     }
-    
+
+    state parse_srv6 {
+        packet.extract(hdr.srv6);
+        transition select(hdr.srv6.segLeft) {
+            0 : parse_sid_last;
+            1 : parse_sid_1;
+            2 : parse_sid_2;
+            3 : parse_sid_3;
+            4 : parse_sid_4;
+            default: accept;
+        }
+    }
+
+    state parse_sid_last {
+        packet.extract(hdr.sidLast);
+        transition accept;
+    }
+
+    state parse_sid_1 {
+        packet.extract(hdr.sidList[0]);
+        transition parse_sid_last;
+    }
+
+    state parse_sid_2 {
+        packet.extract(hdr.sidList[1]);
+        transition parse_sid_1;
+    }
+
+    state parse_sid_3 {
+        packet.extract(hdr.sidList[2]);
+        transition parse_sid_2;
+    }
+
+    state parse_sid_4 {
+        packet.extract(hdr.sidList[3]);
+        transition parse_sid_3;
+    }
+
     state parse_icmpv6 {
         packet.extract(hdr.icmpv6);
         transition select(hdr.icmpv6.type) {
@@ -191,6 +247,11 @@ control MyIngress(inout headers hdr,
         hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
         hdr.ethernet.dstAddr = dstAddr;
         hdr.ipv6.hopLimit = hdr.ipv6.hopLimit - 1;
+    }
+
+    action srv6_end() {
+        hdr.srv6.segLeft = hdr.srv6.segLeft - 1;
+        hdr.ipv6.dstAddr = hdr.sidList[0].sid;
     }
 
     action port_forward(egressSpec_t port) {
@@ -256,6 +317,18 @@ control MyIngress(inout headers hdr,
         default_action = _NoAction();
     }
 
+    table srv6_end_ext {
+        key = {
+            hdr.sidLast.sid: exact;
+        }
+        actions = {
+            port_forward;
+            srv6_end;
+            NoAction;
+        }
+        default_action = NoAction();
+    }
+
     table arp_forward_match {
         key = {
             hdr.arp.targetIP: exact;
@@ -312,7 +385,13 @@ control MyIngress(inout headers hdr,
             	mac_match_exact.apply();
             }
         } else if (hdr.ipv6.isValid()) {
-            ipv6_lpm.apply();
+            if (hdr.srv6.isValid()) {
+                if (srv6_end_ext.apply().hit) {
+                    ipv6_lpm.apply();
+                } else {
+                    ipv6_lpm.apply();
+                }
+            }
         }
         // if (hdr.ndp.isValid() && hdr.icmpv6.type==135) {
         //     ndp_forward_match.apply();
